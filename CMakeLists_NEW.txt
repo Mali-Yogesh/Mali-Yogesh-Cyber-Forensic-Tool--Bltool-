@@ -1,0 +1,259 @@
+cmake_minimum_required(VERSION 3.20)
+project(bltool VERSION 2.0.0 LANGUAGES CXX)
+
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
+# Default to Release build
+if(NOT CMAKE_BUILD_TYPE)
+    set(CMAKE_BUILD_TYPE "Release" CACHE STRING "Build type" FORCE)
+endif()
+
+# Output directories
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
+set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
+
+# =====================================================
+# DEPENDENCIES
+# =====================================================
+
+# OpenSSL (cryptography)
+find_package(OpenSSL REQUIRED)
+message(STATUS "OpenSSL version: ${OPENSSL_VERSION}")
+
+# SQLite3 (database for file index)
+find_package(SQLite3 QUIET)
+if(NOT SQLite3_FOUND)
+    message(WARNING "SQLite3 not found - file indexing disabled")
+endif()
+
+# Qt6 (GUI) - Optional
+find_package(Qt6 COMPONENTS Core Gui Widgets QUIET)
+if(Qt6_FOUND)
+    set(CMAKE_AUTOMOC ON)
+    set(CMAKE_AUTORCC ON)
+    set(CMAKE_AUTOUIC ON)
+    message(STATUS "Qt6 found - GUI will be built")
+else()
+    message(STATUS "Qt6 not found - CLI only")
+endif()
+
+# Boost (threading, filesystem) - Optional but recommended
+find_package(Boost QUIET COMPONENTS system filesystem thread)
+
+# WinFsp (Windows filesystem driver)
+if(WIN32)
+    if(NOT WINFSP_ROOT_DIR)
+        set(WINFSP_ROOT_DIR "C:/Program Files (x86)/WinFsp" CACHE PATH "WinFsp root")
+    endif()
+    set(WINFSP_INCLUDE_DIR ${WINFSP_ROOT_DIR}/inc)
+    set(WINFSP_LIBRARY ${WINFSP_ROOT_DIR}/lib/winfsp-x64.lib)
+    if(NOT EXISTS ${WINFSP_INCLUDE_DIR})
+        message(FATAL_ERROR "WinFsp include not found: ${WINFSP_INCLUDE_DIR}")
+    endif()
+    message(STATUS "WinFsp: ${WINFSP_INCLUDE_DIR}")
+endif()
+
+# =====================================================
+# CORE LIBRARY
+# =====================================================
+
+set(CORE_SOURCES
+    # Imaging/Acquisition
+    src/imaging/disk_imager.cpp
+    src/imaging/disk_imager.h
+    src/imaging/hash_verifier.cpp
+    src/imaging/hash_verifier.h
+    src/imaging/image_reader.cpp
+    src/imaging/image_reader.h
+    
+    # File Recovery
+    src/recovery/carve_engine.cpp
+    src/recovery/carve_engine.h
+    src/recovery/file_recovery.cpp
+    src/recovery/file_recovery.h
+    
+    # Virtual Mounting
+    src/mounting/virtual_mounter.cpp
+    src/mounting/virtual_mounter.h
+    
+    # Hashing & Reporting
+    src/hashing/hash_engine.cpp
+    src/hashing/hash_engine.h
+    src/reporting/report_generator.cpp
+    src/reporting/report_generator.h
+    
+    # Utilities
+    src/utils/logging.cpp
+    src/utils/logging.h
+    src/utils/progress_tracker.cpp
+    src/utils/progress_tracker.h
+    src/utils/database.cpp
+    src/utils/database.h
+    
+    # Existing modules
+    src/disk/disk_reader.cpp
+    src/disk/disk_reader.h
+    
+    src/bitlocker/bitlocker_metadata_compat.cpp
+    src/bitlocker/bitlocker_metadata_compat.h
+    src/bitlocker/recovery_key.cpp
+    src/bitlocker/recovery_key.h
+    src/bitlocker/fvek_derivation.cpp
+    src/bitlocker/fvek_derivation.h
+    
+    src/crypto/aes_xts.cpp
+    src/crypto/aes_xts.h
+    src/crypto/aes_cbc.cpp
+    src/crypto/aes_cbc.h
+    src/crypto/elephant.cpp
+    src/crypto/elephant.h
+    src/crypto/crypto_utils.cpp
+    src/crypto/crypto_utils.h
+    
+    src/virtual_disk/decrypted_disk.cpp
+    src/ntfs/ntfs_boot.cpp
+    src/ntfs/mft_parser.cpp
+    src/ntfs/runlist.cpp
+    src/ntfs/attribute_list.cpp
+    src/ntfs/directory.cpp
+    src/ntfs/file_reader.cpp
+    src/ntfs/path_resolver.cpp
+)
+
+add_library(bltool_core STATIC ${CORE_SOURCES})
+
+target_include_directories(bltool_core PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
+)
+
+target_include_directories(bltool_core PRIVATE
+    ${OPENSSL_INCLUDE_DIR}
+)
+
+target_link_libraries(bltool_core PUBLIC
+    OpenSSL::Crypto
+)
+
+if(SQLite3_FOUND)
+    target_include_directories(bltool_core PRIVATE ${SQLite3_INCLUDE_DIRS})
+    target_link_libraries(bltool_core PRIVATE ${SQLite3_LIBRARIES})
+    target_compile_definitions(bltool_core PRIVATE HAVE_SQLITE3)
+endif()
+
+if(Boost_FOUND)
+    target_link_libraries(bltool_core PUBLIC Boost::system Boost::filesystem Boost::thread)
+endif()
+
+if(MSVC)
+    target_compile_options(bltool_core PRIVATE /W4 /EHsc)
+    set_property(TARGET bltool_core PROPERTY MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+endif()
+
+# =====================================================
+# CLI APPLICATION
+# =====================================================
+
+add_executable(bltool_cli
+    src/cli/main.cpp
+    src/cli/command_parser.cpp
+    src/cli/command_parser.h
+)
+
+target_link_libraries(bltool_cli PRIVATE bltool_core)
+
+if(WIN32)
+    target_link_libraries(bltool_cli PRIVATE
+        advapi32
+        user32
+        shell32
+        wbemuuid
+        ole32
+        oleaut32
+    )
+    if(WINFSP_LIBRARY)
+        target_link_libraries(bltool_cli PRIVATE ${WINFSP_LIBRARY})
+    endif()
+endif()
+
+if(MSVC)
+    set_property(TARGET bltool_cli PROPERTY WIN32_EXECUTABLE OFF)
+endif()
+
+# =====================================================
+# GUI APPLICATION (Optional)
+# =====================================================
+
+if(Qt6_FOUND)
+    set(GUI_SOURCES
+        src/gui/main_window.cpp
+        src/gui/main_window.h
+        src/gui/imaging_wizard.cpp
+        src/gui/imaging_wizard.h
+        src/gui/recovery_panel.cpp
+        src/gui/recovery_panel.h
+        src/gui/mount_manager.cpp
+        src/gui/mount_manager.h
+        src/gui/logs_viewer.cpp
+        src/gui/logs_viewer.h
+        src/gui/resources.qrc
+    )
+    
+    add_executable(bltool_gui
+        src/gui/gui_main.cpp
+        ${GUI_SOURCES}
+    )
+    
+    target_link_libraries(bltool_gui PRIVATE
+        bltool_core
+        Qt6::Core
+        Qt6::Gui
+        Qt6::Widgets
+    )
+    
+    if(WIN32)
+        target_link_libraries(bltool_gui PRIVATE
+            advapi32
+            user32
+            shell32
+            wbemuuid
+            ole32
+            oleaut32
+        )
+        if(WINFSP_LIBRARY)
+            target_link_libraries(bltool_gui PRIVATE ${WINFSP_LIBRARY})
+        endif()
+    endif()
+    
+    if(MSVC)
+        set_property(TARGET bltool_gui PROPERTY WIN32_EXECUTABLE ON)
+    endif()
+endif()
+
+# =====================================================
+# INSTALL TARGETS
+# =====================================================
+
+install(TARGETS bltool_cli RUNTIME DESTINATION bin)
+if(Qt6_FOUND)
+    install(TARGETS bltool_gui RUNTIME DESTINATION bin)
+endif()
+install(FILES README.md LICENSE DESTINATION .)
+
+# =====================================================
+# PRINT SUMMARY
+# =====================================================
+
+message(STATUS "")
+message(STATUS "=== bltool v2.0.0 Configuration ===")
+message(STATUS "  Build type: ${CMAKE_BUILD_TYPE}")
+message(STATUS "  OpenSSL: ${OPENSSL_VERSION}")
+message(STATUS "  SQLite3: ${SQLite3_FOUND}")
+message(STATUS "  Boost: ${Boost_FOUND}")
+message(STATUS "  Qt6: ${Qt6_FOUND}")
+message(STATUS "  WinFsp: ${WINFSP_LIBRARY}")
+message(STATUS "====================================")

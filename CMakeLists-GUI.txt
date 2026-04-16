@@ -1,0 +1,102 @@
+cmake_minimum_required(VERSION 3.15)
+project(bltool-gui VERSION 1.0.0 LANGUAGES CXX)
+
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_AUTOMOC ON)
+set(CMAKE_AUTORCC ON)
+set(CMAKE_AUTOUIC ON)
+
+find_package(Qt6 REQUIRED COMPONENTS 
+    Widgets 
+    Core 
+    Gui 
+    Network 
+    WebEngineWidgets
+)
+
+# Include directories
+include_directories(${CMAKE_CURRENT_SOURCE_DIR}/gui/src)
+include_directories(${CMAKE_CURRENT_SOURCE_DIR}/gui/src/widgets)
+include_directories(${CMAKE_CURRENT_SOURCE_DIR}/gui/src/panels)
+include_directories(${CMAKE_CURRENT_SOURCE_DIR}/gui/src/workers)
+
+# Source files - currently created
+set(SOURCES
+    gui/src/main.cpp
+    gui/src/mainwindow.cpp
+    gui/src/panels/DashboardPanel.cpp
+    gui/src/panels/ImagingPanel.cpp
+    gui/src/panels/VerifyPanel.cpp
+    gui/src/panels/MountPanel.cpp
+    gui/src/panels/RecoveryPanel.cpp
+    gui/src/panels/CarvingPanel.cpp
+    gui/src/panels/SearchPanel.cpp
+    gui/src/panels/RepairPanel.cpp
+    gui/src/panels/TimelinePanel.cpp
+    gui/src/panels/ReportPanel.cpp
+    gui/src/widgets/ConsoleWidget.cpp
+    gui/src/widgets/CaseInfoBar.cpp
+    gui/src/workers/ProcessWorker.cpp
+    gui/src/workers/DiskEnumerator.cpp
+)
+
+# Header files
+set(HEADERS
+    gui/src/mainwindow.h
+    gui/src/panels/DashboardPanel.h
+    gui/src/panels/ImagingPanel.h
+    gui/src/panels/VerifyPanel.h
+    gui/src/panels/MountPanel.h
+    gui/src/panels/RecoveryPanel.h
+    gui/src/panels/CarvingPanel.h
+    gui/src/panels/SearchPanel.h
+    gui/src/panels/RepairPanel.h
+    gui/src/panels/TimelinePanel.h
+    gui/src/panels/ReportPanel.h
+    gui/src/widgets/ConsoleWidget.h
+    gui/src/widgets/CaseInfoBar.h
+    gui/src/workers/ProcessWorker.h
+    gui/src/workers/DiskEnumerator.h
+)
+
+# Create executable
+add_executable(bltool-gui WIN32
+    ${SOURCES}
+    ${HEADERS}
+)
+
+# Link libraries
+target_link_libraries(bltool-gui PRIVATE
+    Qt6::Widgets
+    Qt6::Core
+    Qt6::Gui
+    Qt6::Network
+    Qt6::WebEngineWidgets
+    advapi32
+    ole32
+    oleaut32
+    wbemuuid
+)
+
+# Include directories
+target_include_directories(bltool-gui PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/workers
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/panels
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/widgets
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/models
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/utils
+)
+
+# Set output directory
+set_target_properties(bltool-gui PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
+)
+
+# Windows subsystem
+if(WIN32)
+    set_target_properties(bltool-gui PROPERTIES
+        WIN32_EXECUTABLE ON
+    )
+endif()
